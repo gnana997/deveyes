@@ -7,7 +7,9 @@ DevEyes is a Model Context Protocol (MCP) server that captures screenshots from 
 ## Features
 
 - **Smart Screenshot Capture** - Capture screenshots from any localhost URL with automatic LLM optimization
+- **Full-Page Screenshots** - Capture entire scrollable pages with auto-scroll to trigger lazy-loaded content
 - **Auto-Compression** - Automatically resizes and compresses images to stay within Claude's limits (8000px max, 1568px optimal)
+- **Local Save Fallback** - Save screenshots locally for MCP clients that don't support embedded images (Augment, Cline)
 - **Viewport Presets** - Built-in presets for mobile, tablet, and desktop testing
 - **Console Capture** - Captures browser console errors, warnings, and network failures
 - **Multi-Browser Support** - Choose between Chromium (default), Firefox, or WebKit
@@ -121,6 +123,67 @@ By default, DevEyes uses Chromium. To use Firefox or WebKit:
 
 Supported browsers: `chromium` (default), `firefox`, `webkit`
 
+### Local Screenshot Storage
+
+For MCP clients that don't display embedded images (like Augment Code or Cline), you can enable local screenshot saving:
+
+**Enable by default (recommended for Augment/Cline users):**
+```json
+{
+  "mcpServers": {
+    "deveyes": {
+      "command": "npx",
+      "args": ["deveyes"],
+      "env": {
+        "DEVEYES_SAVE_SCREENSHOTS": "true"
+      }
+    }
+  }
+}
+```
+
+**With automatic cleanup (keep only last 50 screenshots):**
+```json
+{
+  "mcpServers": {
+    "deveyes": {
+      "command": "npx",
+      "args": ["deveyes"],
+      "env": {
+        "DEVEYES_SAVE_SCREENSHOTS": "true",
+        "DEVEYES_MAX_SCREENSHOTS": "50"
+      }
+    }
+  }
+}
+```
+
+**With custom directory (full control):**
+```json
+{
+  "mcpServers": {
+    "deveyes": {
+      "command": "npx",
+      "args": ["deveyes"],
+      "env": {
+        "DEVEYES_SAVE_SCREENSHOTS": "true",
+        "DEVEYES_SCREENSHOT_DIR": "/Users/me/screenshots"
+      }
+    }
+  }
+}
+```
+
+#### Screenshot Directory Detection
+
+DevEyes automatically detects where to save screenshots using this priority:
+
+1. **`DEVEYES_SCREENSHOT_DIR`** - If set, uses this exact path
+2. **Project root** - Looks for `package.json` or `.git` walking up from cwd, saves to `{project}/.deveyes/screenshots/`
+3. **Home directory fallback** - If no project found, saves to `~/.deveyes/screenshots/`
+
+This ensures screenshots work reliably across all platforms (Windows, macOS, Linux) and MCP client configurations.
+
 ## Usage
 
 Once configured, your AI assistant can use the `screenshot` tool to capture your UI:
@@ -169,9 +232,10 @@ Capture a screenshot from any URL with automatic optimization for LLM consumptio
 |-----------|------|----------|---------|-------------|
 | `url` | string | Yes | - | Full URL to capture (e.g., `http://localhost:3000`) |
 | `viewport` | string | No | `desktop` | Viewport preset or custom `WxH` dimensions |
-| `fullPage` | boolean | No | `false` | Capture full scrollable page |
+| `fullPage` | boolean | No | `false` | Capture full scrollable page (auto-scrolls to load lazy content) |
 | `waitFor` | string | No | `networkIdle` | Wait condition: `networkIdle`, `domStable`, `load`, `none` |
 | `waitForSelector` | string | No | - | CSS selector to wait for before capture |
+| `save` | boolean | No | `false` | Save screenshot to local `.deveyes/screenshots/` folder |
 
 **Returns:**
 
@@ -182,6 +246,8 @@ Capture a screenshot from any URL with automatic optimization for LLM consumptio
   - Estimated token cost
   - Console errors/warnings
   - Network errors
+  - `savedTo` / `relativePath` (when `save=true`)
+  - `hint` - Helpful message for retry or configuration
 
 ## Image Optimization
 
@@ -193,6 +259,15 @@ DevEyes automatically optimizes images to work within Claude's constraints:
 | Optimal dimension | 1,568 px | Targets this for best quality/token ratio |
 | Max file size | 5 MB | Compresses to ~750 KB (for base64 overhead) |
 | Token cost | (w×h)/750 | Reports estimated tokens in response |
+| Full-page minimum width | 800 px | Maintains readable width for tall screenshots |
+
+### Full-Page Screenshot Handling
+
+When `fullPage=true`, DevEyes:
+1. **Auto-scrolls** through the entire page to trigger lazy-loaded content (Intersection Observer, scroll animations)
+2. **Forces animation completion** by disabling CSS animations/transitions
+3. **Maintains readable width** (minimum 800px) even for very tall pages
+4. **Allows larger file size** (~1.5MB vs ~750KB) for detailed full-page captures
 
 ## Development
 
@@ -300,6 +375,48 @@ Make sure your page has finished loading. Use `waitFor: load` or `waitForSelecto
 ```
 Screenshot http://localhost:3000 waitForSelector: #app
 ```
+
+### Image not displaying in Augment/Cline
+
+Some MCP clients (Augment Code, Cline) don't support embedded images in tool responses. Use the `save` parameter or enable it by default:
+
+**Option 1: Per-request**
+```
+Take a screenshot of http://localhost:3000 with save=true
+```
+
+**Option 2: Set as default (recommended)**
+Add `DEVEYES_SAVE_SCREENSHOTS=true` to your MCP server config (see [Local Screenshot Storage](#local-screenshot-storage)).
+
+The screenshot will be saved to `.deveyes/screenshots/` and you can attach it manually to your chat.
+
+### Full-page screenshot missing content
+
+If sections appear blank in full-page screenshots, the page may have:
+- **Heavy lazy loading** - Try waiting longer with `waitFor: load`
+- **Scroll-triggered animations** - DevEyes auto-scrolls but some complex animations may need `waitForSelector`
+- **Dynamic content loading** - Use `waitForSelector` to wait for specific elements
+
+### Screenshot save fails on macOS/Linux
+
+If `save=true` fails with a path or permission error:
+
+1. **Check the logs** - DevEyes logs which directory it's using:
+   ```
+   [DevEyes] Screenshot dir (project): /path/to/.deveyes/screenshots
+   [DevEyes] Screenshot dir (home fallback): ~/.deveyes/screenshots
+   ```
+
+2. **Use custom directory** - Set `DEVEYES_SCREENSHOT_DIR` to a writable path:
+   ```json
+   {
+     "env": {
+       "DEVEYES_SCREENSHOT_DIR": "/Users/me/screenshots"
+     }
+   }
+   ```
+
+3. **Home directory fallback** - If no project is detected, DevEyes saves to `~/.deveyes/screenshots/` which should always be writable.
 
 ## Contributing
 

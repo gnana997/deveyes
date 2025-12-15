@@ -58,6 +58,8 @@ export interface ProcessImageOptions {
   quality?: number;
   /** Force resize even if within limits */
   forceResize?: boolean;
+  /** Is this a full-page capture? Allows larger files and maintains readability */
+  isFullPage?: boolean;
 }
 
 /**
@@ -93,6 +95,38 @@ export function calculateResizeDimensions(
 }
 
 /**
+ * Calculate resize dimensions for full-page captures
+ * Prioritizes maintaining readable width over strict dimension limits
+ */
+export function calculateFullPageDimensions(
+  width: number,
+  height: number,
+  minWidth: number,
+  maxHeight: number
+): { width: number; height: number } {
+  const aspectRatio = width / height;
+
+  // If height exceeds max, scale down but maintain minimum width
+  if (height > maxHeight) {
+    const scaledWidth = Math.round(maxHeight * aspectRatio);
+    // If scaled width would be too small, prioritize width
+    if (scaledWidth < minWidth) {
+      const newHeight = Math.round(minWidth / aspectRatio);
+      return { width: minWidth, height: Math.min(newHeight, maxHeight) };
+    }
+    return { width: scaledWidth, height: maxHeight };
+  }
+
+  // If width is already below minimum, scale up to minimum
+  if (width < minWidth) {
+    const newHeight = Math.round(minWidth / aspectRatio);
+    return { width: minWidth, height: newHeight };
+  }
+
+  return { width, height };
+}
+
+/**
  * Process an image buffer for LLM compatibility
  * Applies resize and compression as needed
  */
@@ -102,9 +136,12 @@ export async function processImage(
 ): Promise<ProcessedImage> {
   const {
     maxDimension = LLM_LIMITS.optimalDimension,
-    targetSize = LLM_LIMITS.targetSize,
     quality: initialQuality = IMAGE_DEFAULTS.jpegQuality,
+    isFullPage = false,
   } = options;
+
+  // Use larger target size for full-page captures
+  const targetSize = isFullPage ? LLM_LIMITS.fullPageTargetSize : (options.targetSize ?? LLM_LIMITS.targetSize);
 
   const transforms: string[] = [];
 
@@ -122,9 +159,35 @@ export async function processImage(
   let resized = false;
   let compressed = false;
 
-  // Step 1: Check if dimensions exceed hard limit (8000px)
   const maxCurrentDim = Math.max(currentWidth, currentHeight);
-  if (maxCurrentDim > LLM_LIMITS.maxDimension) {
+  const isVeryTall = currentHeight > currentWidth * 3; // Aspect ratio > 3:1
+
+  // Full-page handling: prioritize readability over dimension limits
+  if (isFullPage && isVeryTall) {
+    // For tall pages, maintain readable width and constrain height
+    const newDims = calculateFullPageDimensions(
+      currentWidth,
+      currentHeight,
+      LLM_LIMITS.minReadableWidth,
+      LLM_LIMITS.maxDimension - 500 // Leave some headroom
+    );
+
+    if (newDims.width !== currentWidth || newDims.height !== currentHeight) {
+      currentBuffer = await sharp(currentBuffer)
+        .resize(newDims.width, newDims.height, {
+          fit: 'fill', // Use fill to allow aspect ratio change for very tall images
+          withoutEnlargement: false, // Allow upscaling width if needed
+        })
+        .toBuffer();
+      currentWidth = newDims.width;
+      currentHeight = newDims.height;
+      resized = true;
+      transforms.push(`fullpage_resize_${originalWidth}x${originalHeight}_to_${currentWidth}x${currentHeight}`);
+    }
+  }
+  // Standard handling for non-full-page or normal aspect ratios
+  else if (maxCurrentDim > LLM_LIMITS.maxDimension) {
+    // Step 1: Check if dimensions exceed hard limit (8000px)
     const newDims = calculateResizeDimensions(
       currentWidth,
       currentHeight,
@@ -142,7 +205,7 @@ export async function processImage(
     transforms.push(`resized_from_${originalWidth}x${originalHeight}_to_${currentWidth}x${currentHeight}`);
   }
   // Step 2: Check if dimensions exceed optimal (1568px)
-  else if (maxCurrentDim > maxDimension) {
+  else if (maxCurrentDim > maxDimension && !isFullPage) {
     const newDims = calculateResizeDimensions(currentWidth, currentHeight, maxDimension);
     currentBuffer = await sharp(currentBuffer)
       .resize(newDims.width, newDims.height, {
@@ -185,11 +248,17 @@ export async function processImage(
     }
   }
 
-  // Step 5: If still too large, force additional resize
+  // Step 5: If still too large, force additional resize (but respect min width for full-page)
   if (currentSize > targetSize) {
     const reductionRatio = Math.sqrt(targetSize / currentSize);
-    const newWidth = Math.round(currentWidth * reductionRatio);
-    const newHeight = Math.round(currentHeight * reductionRatio);
+    let newWidth = Math.round(currentWidth * reductionRatio);
+    let newHeight = Math.round(currentHeight * reductionRatio);
+
+    // For full-page captures, don't go below minimum readable width
+    if (isFullPage && newWidth < LLM_LIMITS.minReadableWidth) {
+      newWidth = LLM_LIMITS.minReadableWidth;
+      newHeight = Math.round(currentHeight * (newWidth / currentWidth));
+    }
 
     currentBuffer = await sharp(currentBuffer)
       .resize(newWidth, newHeight, {

@@ -17,10 +17,14 @@ export const LLM_LIMITS = {
   maxDimension: 8000,
   /** Optimal dimension for Claude (best quality/token ratio) */
   optimalDimension: 1568,
+  /** Minimum width for readability (don't compress below this) */
+  minReadableWidth: 800,
   /** Maximum file size in bytes (5MB) */
   maxFileSize: 5 * 1024 * 1024,
   /** Target size for base64 encoding overhead (~750KB) */
   targetSize: 750 * 1024,
+  /** Larger target size for full-page captures (~1.5MB, still within limits) */
+  fullPageTargetSize: 1.5 * 1024 * 1024,
   /** Token cost formula: (width × height) / 750 */
   tokenDivisor: 750,
 } as const;
@@ -56,6 +60,28 @@ export const BROWSER_DEFAULTS = {
  */
 export const SERVER_CONFIG = {
   name: 'deveyes',
-  version: '1.0.0',
+  version: '1.0.2',
   description: 'MCP server for capturing and optimizing screenshots from local development environments',
+} as const;
+
+/**
+ * Screenshot storage defaults
+ * Configurable via environment variables
+ *
+ * Directory detection priority:
+ * 1. DEVEYES_SCREENSHOT_DIR env var (explicit override)
+ * 2. Project root (detected via package.json or .git)
+ * 3. Home directory fallback (~/.deveyes/screenshots)
+ */
+export const STORAGE_DEFAULTS = {
+  /** Subdirectory for saved screenshots (relative to detected root) */
+  screenshotSubdir: '.deveyes/screenshots',
+  /** Whether to save screenshots by default (DEVEYES_SAVE_SCREENSHOTS=true) */
+  saveByDefault: process.env.DEVEYES_SAVE_SCREENSHOTS === 'true',
+  /** Maximum screenshots to keep before cleanup (DEVEYES_MAX_SCREENSHOTS) */
+  maxScreenshots: process.env.DEVEYES_MAX_SCREENSHOTS
+    ? parseInt(process.env.DEVEYES_MAX_SCREENSHOTS, 10)
+    : undefined,
+  /** Custom directory override (DEVEYES_SCREENSHOT_DIR) */
+  customDir: process.env.DEVEYES_SCREENSHOT_DIR || undefined,
 } as const;

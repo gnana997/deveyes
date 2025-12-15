@@ -207,10 +207,94 @@ export async function navigateToUrl(
     });
   }
 
-  // Small delay to ensure any final renders complete
+  // Wait for animations and client-side rendering to complete
+  // Modern frameworks (React, Vue, Next.js) often render content after networkidle
   if (waitFor === 'networkIdle' || waitFor === 'domStable') {
-    await page.waitForTimeout(500);
+    // Wait for any pending requestAnimationFrame callbacks
+    await page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        // Wait for next animation frame to ensure React/Vue renders complete
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      });
+    });
+    // Additional delay for any CSS transitions/animations to settle
+    await page.waitForTimeout(1000);
   }
+}
+
+/**
+ * Scroll through the entire page to trigger lazy-loaded content
+ * This ensures Intersection Observer-based lazy loading and scroll animations fire
+ */
+export async function scrollToLoadContent(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Get the full scrollable height
+    const scrollHeight = document.documentElement.scrollHeight;
+    const viewportHeight = window.innerHeight;
+
+    // Scroll down in chunks to trigger lazy loading
+    const scrollStep = Math.floor(viewportHeight * 0.8); // 80% of viewport
+    let currentPosition = 0;
+
+    while (currentPosition < scrollHeight) {
+      window.scrollTo({ top: currentPosition, behavior: 'instant' });
+      currentPosition += scrollStep;
+      // Wait for lazy content to load and animations to trigger
+      await delay(200);
+    }
+
+    // Scroll to absolute bottom to ensure footer content loads
+    window.scrollTo({ top: scrollHeight, behavior: 'instant' });
+    await delay(300);
+
+    // Scroll back to top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    await delay(200);
+  });
+
+  // Wait for any final network requests from lazy loading
+  await page.waitForLoadState('networkidle').catch(() => {
+    // Timeout is ok - some sites have persistent connections
+  });
+
+  // Force all CSS animations to complete and make content visible
+  await page.evaluate(() => {
+    // Disable CSS animations/transitions temporarily for accurate capture
+    const style = document.createElement('style');
+    style.id = 'deveyes-animation-disable';
+    style.textContent = `
+      *, *::before, *::after {
+        animation-delay: 0s !important;
+        animation-duration: 0s !important;
+        transition-delay: 0s !important;
+        transition-duration: 0s !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Force visibility on common animation library classes
+    const animatedElements = document.querySelectorAll(
+      '[data-aos], .aos-animate, .aos-init, ' +
+      '[class*="animate-"], [class*="fade-"], [class*="slide-"], ' +
+      '.gsap-marker-start, .gsap-marker-end, ' +
+      '[style*="opacity: 0"], [style*="opacity:0"]'
+    );
+    animatedElements.forEach((el) => {
+      const element = el as HTMLElement;
+      element.style.opacity = '1';
+      element.style.transform = 'none';
+      element.style.visibility = 'visible';
+    });
+  });
+
+  // Final settle time
+  await page.waitForTimeout(300);
 }
 
 /**
@@ -221,6 +305,11 @@ export async function captureScreenshot(
   options: { fullPage?: boolean } = {}
 ): Promise<Buffer> {
   const { fullPage = false } = options;
+
+  // For full-page captures, scroll through the page first to trigger lazy loading
+  if (fullPage) {
+    await scrollToLoadContent(page);
+  }
 
   const screenshot = await page.screenshot({
     type: 'png',

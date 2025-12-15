@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { imageContent } from 'fastmcp';
 import {
   createPage,
   navigateToUrl,
@@ -14,6 +15,7 @@ import {
 import { processImage, estimateTokenCost } from '../lib/image-processor.js';
 import { createConsoleCapture, ConsoleCaptureResult } from '../lib/console-capture.js';
 import { parseViewport, getAvailableViewports } from '../lib/viewports.js';
+import { saveScreenshot, getStorageConfig, SaveResult } from '../lib/screenshot-storage.js';
 
 /**
  * Screenshot tool input schema
@@ -44,6 +46,10 @@ export const screenshotInputSchema = z.object({
     .string()
     .optional()
     .describe('CSS selector to wait for before capture (optional)'),
+  save: z
+    .boolean()
+    .optional()
+    .describe('Save screenshot to local .deveyes/screenshots/ folder. Use this if the image is not displaying in your client. Can be set as default via DEVEYES_SAVE_SCREENSHOTS=true env variable.'),
 });
 
 export type ScreenshotInput = z.infer<typeof screenshotInputSchema>;
@@ -54,6 +60,8 @@ export type ScreenshotInput = z.infer<typeof screenshotInputSchema>;
 export interface ScreenshotOutput {
   /** Base64 encoded image */
   imageBase64: string;
+  /** Image buffer for saving */
+  imageBuffer: Buffer;
   /** MIME type */
   mimeType: string;
   /** Viewport info */
@@ -82,13 +90,19 @@ export interface ScreenshotOutput {
   console: ConsoleCaptureResult;
   /** URL that was captured */
   url: string;
+  /** File save result (if save=true) */
+  saved?: SaveResult;
 }
 
 /**
  * Execute screenshot capture
  */
 export async function executeScreenshot(input: ScreenshotInput): Promise<ScreenshotOutput> {
-  const { url, viewport, fullPage, waitFor, waitForSelector } = input;
+  const { url, viewport, fullPage, waitFor, waitForSelector, save } = input;
+
+  // Determine if we should save (explicit param or env default)
+  const storageConfig = getStorageConfig();
+  const shouldSave = save ?? storageConfig.saveByDefault;
 
   // Parse viewport configuration
   const viewportConfig = parseViewport(viewport);
@@ -112,14 +126,21 @@ export async function executeScreenshot(input: ScreenshotInput): Promise<Screens
     const rawScreenshot = await captureScreenshot(page, { fullPage });
 
     // Process image for LLM compatibility
-    const processed = await processImage(rawScreenshot);
+    const processed = await processImage(rawScreenshot, { isFullPage: fullPage });
 
     // Get console capture
     const consoleCaptured = consoleCapture.getCapture();
 
+    // Save screenshot if requested
+    let saved: SaveResult | undefined;
+    if (shouldSave) {
+      saved = saveScreenshot(processed.buffer, url);
+    }
+
     // Build response
     const output: ScreenshotOutput = {
       imageBase64: processed.base64,
+      imageBuffer: processed.buffer,
       mimeType: processed.mimeType,
       viewport: {
         name: viewportName,
@@ -144,6 +165,7 @@ export async function executeScreenshot(input: ScreenshotInput): Promise<Screens
       transforms: processed.transformInfo.transforms,
       console: consoleCaptured,
       url,
+      saved,
     };
 
     return output;
@@ -155,31 +177,12 @@ export async function executeScreenshot(input: ScreenshotInput): Promise<Screens
 }
 
 /**
- * Content types for MCP responses
- */
-interface ImageContent {
-  type: 'image';
-  data: string;
-  mimeType: string;
-}
-
-interface TextContent {
-  type: 'text';
-  text: string;
-}
-
-interface ContentResult {
-  content: Array<ImageContent | TextContent>;
-  isError?: boolean;
-}
-
-/**
  * Format screenshot output for MCP response
- * Returns ContentResult with image and metadata
+ * Uses FastMCP's imageContent helper for proper image handling
  */
-export function formatScreenshotResponse(output: ScreenshotOutput): ContentResult {
-  // Metadata without the base64 image
-  const metadata = {
+export async function formatScreenshotResponse(output: ScreenshotOutput) {
+  // Build metadata with appropriate hint based on save status
+  const metadata: Record<string, unknown> = {
     viewport: output.viewport,
     original: output.original,
     processed: output.processed,
@@ -188,15 +191,23 @@ export function formatScreenshotResponse(output: ScreenshotOutput): ContentResul
     url: output.url,
   };
 
+  // Add file paths and hint if saved
+  if (output.saved) {
+    metadata.savedTo = output.saved.absolutePath;
+    metadata.relativePath = output.saved.relativePath;
+    metadata.hint = 'Screenshot saved locally. To make this the default behavior, set DEVEYES_SAVE_SCREENSHOTS=true in your MCP server config.';
+  } else {
+    metadata.hint = 'If you cannot see the image above, retry with save=true to save it locally for manual attachment.';
+  }
+
+  // Use FastMCP's imageContent helper with buffer
+  const image = await imageContent({ buffer: output.imageBuffer });
+
   return {
     content: [
+      image,
       {
-        type: 'image',
-        data: output.imageBase64,
-        mimeType: output.mimeType,
-      },
-      {
-        type: 'text',
+        type: 'text' as const,
         text: JSON.stringify(metadata, null, 2),
       },
     ],
