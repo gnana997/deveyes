@@ -25,9 +25,10 @@ server.addTool({
   name: 'screenshot',
   description: screenshotTool.description,
   parameters: screenshotTool.parameters,
-  execute: async (args) => {
+  execute: async (args, context) => {
     try {
-      const result = await screenshotTool.execute(args);
+      // Pass context to tool execute for MCP roots access
+      const result = await screenshotTool.execute(args, context);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

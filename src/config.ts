@@ -60,7 +60,7 @@ export const BROWSER_DEFAULTS = {
  */
 export const SERVER_CONFIG = {
   name: 'deveyes',
-  version: '1.0.2',
+  version: '1.0.5',
   description: 'MCP server for capturing and optimizing screenshots from local development environments',
 } as const;
 

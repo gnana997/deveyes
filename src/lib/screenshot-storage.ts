@@ -7,7 +7,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync, appendFileSync } from 'fs';
-import { join, resolve, parse, dirname } from 'path';
+import { join, parse, dirname } from 'path';
 import { homedir } from 'os';
 
 /**
@@ -40,6 +40,48 @@ const GITIGNORE_ENTRY = '.deveyes/';
 // Cache the resolved base directory to avoid repeated filesystem walks
 let cachedBaseDir: string | null = null;
 
+// MCP Roots provided by the client (workspace directories)
+let mcpRoots: Array<{ uri: string; name?: string }> | null = null;
+
+/**
+ * Set MCP roots from the client session
+ * This should be called when the tool executes to provide workspace context
+ */
+export function setMcpRoots(roots: Array<{ uri: string; name?: string }> | undefined | null): void {
+  if (roots && roots.length > 0) {
+    mcpRoots = roots;
+    // Reset cached dir so it re-evaluates with new roots
+    cachedBaseDir = null;
+    console.error(`[DevEyes] MCP Roots received: ${roots.map(r => r.uri).join(', ')}`);
+  }
+}
+
+/**
+ * Parse a file:// URI to a filesystem path
+ * Handles: file:///path/to/dir (Unix) and file:///C:/path/to/dir (Windows)
+ */
+function parseFileUri(uri: string): string | null {
+  if (!uri.startsWith('file://')) {
+    return null;
+  }
+
+  try {
+    const url = new URL(uri);
+    // url.pathname gives us the path, but on Windows it starts with /C:/
+    // We need to remove the leading slash for Windows paths
+    let path = decodeURIComponent(url.pathname);
+
+    // On Windows, pathname is like /C:/Users/... - remove leading slash
+    if (process.platform === 'win32' && path.match(/^\/[A-Za-z]:/)) {
+      path = path.slice(1);
+    }
+
+    return path;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Find the project root by walking up from cwd looking for package.json or .git
  * Uses cross-platform root detection with path.parse()
@@ -70,7 +112,11 @@ function findProjectRoot(): string | null {
 
 /**
  * Get the base directory for screenshot storage
- * Priority: 1) DEVEYES_SCREENSHOT_DIR env var, 2) project root, 3) home directory
+ * Priority:
+ *   1) DEVEYES_SCREENSHOT_DIR env var (explicit override)
+ *   2) MCP Roots from client (workspace directories)
+ *   3) Project root from cwd (package.json or .git)
+ *   4) Home directory fallback
  */
 function getScreenshotBaseDir(): string {
   // Return cached value if available
@@ -78,25 +124,41 @@ function getScreenshotBaseDir(): string {
     return cachedBaseDir;
   }
 
+  const cwd = process.cwd();
+  console.error(`[DevEyes] Current working directory: ${cwd}`);
+
   // 1. Check for explicit override via environment variable
   const customDir = process.env.DEVEYES_SCREENSHOT_DIR;
   if (customDir) {
     cachedBaseDir = customDir;
-    console.error(`[DevEyes] Screenshot dir (custom): ${customDir}`);
+    console.error(`[DevEyes] Screenshot dir (custom env): ${customDir}`);
     return customDir;
   }
 
-  // 2. Try to find project root (package.json or .git)
+  // 2. Try MCP Roots from client (the proper way to get workspace)
+  if (mcpRoots && mcpRoots.length > 0) {
+    // Use the first root as the workspace directory
+    const firstRoot = mcpRoots[0];
+    const rootPath = parseFileUri(firstRoot.uri);
+    if (rootPath && existsSync(rootPath)) {
+      cachedBaseDir = join(rootPath, SCREENSHOT_SUBDIR);
+      console.error(`[DevEyes] Screenshot dir (MCP root): ${cachedBaseDir}`);
+      return cachedBaseDir;
+    }
+  }
+
+  // 3. Try to find project root from cwd (package.json or .git)
   const projectRoot = findProjectRoot();
   if (projectRoot) {
     cachedBaseDir = join(projectRoot, SCREENSHOT_SUBDIR);
-    console.error(`[DevEyes] Screenshot dir (project): ${cachedBaseDir}`);
+    console.error(`[DevEyes] Screenshot dir (project cwd): ${cachedBaseDir}`);
     return cachedBaseDir;
   }
 
-  // 3. Fallback to home directory (always writable)
+  // 4. Fallback to home directory (always writable)
   cachedBaseDir = join(homedir(), SCREENSHOT_SUBDIR);
   console.error(`[DevEyes] Screenshot dir (home fallback): ${cachedBaseDir}`);
+  console.error(`[DevEyes] No project root found. Set DEVEYES_SCREENSHOT_DIR or ensure MCP client provides roots.`);
   return cachedBaseDir;
 }
 

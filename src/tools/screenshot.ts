@@ -15,7 +15,7 @@ import {
 import { processImage, estimateTokenCost } from '../lib/image-processor.js';
 import { createConsoleCapture, ConsoleCaptureResult } from '../lib/console-capture.js';
 import { parseViewport, getAvailableViewports } from '../lib/viewports.js';
-import { saveScreenshot, getStorageConfig, SaveResult } from '../lib/screenshot-storage.js';
+import { saveScreenshot, getStorageConfig, SaveResult, setMcpRoots } from '../lib/screenshot-storage.js';
 
 /**
  * Screenshot tool input schema
@@ -215,6 +215,20 @@ export async function formatScreenshotResponse(output: ScreenshotOutput) {
 }
 
 /**
+ * MCP Session context type for roots
+ */
+interface McpSession {
+  roots?: Array<{ uri: string; name?: string }>;
+}
+
+/**
+ * MCP Tool context passed to execute function
+ */
+interface McpToolContext {
+  session?: McpSession;
+}
+
+/**
  * Screenshot tool definition for FastMCP
  */
 export const screenshotTool = {
@@ -222,7 +236,12 @@ export const screenshotTool = {
   description:
     'Capture a screenshot from any URL (typically localhost) with automatic optimization for LLM consumption. Handles image resizing and compression to stay within Claude/LLM limits. Captures console errors and warnings.',
   parameters: screenshotInputSchema,
-  execute: async (args: ScreenshotInput) => {
+  execute: async (args: ScreenshotInput, context?: McpToolContext) => {
+    // Set MCP roots from session if available (enables proper workspace detection)
+    if (context?.session?.roots) {
+      setMcpRoots(context.session.roots);
+    }
+
     const output = await executeScreenshot(args);
     return formatScreenshotResponse(output);
   },

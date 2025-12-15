@@ -1,6 +1,6 @@
 {
   "name": "deveyes",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "MCP server that gives AI coding assistants eyes to see visual output from local development environments",
   "type": "module",
   "main": "dist/index.js",
