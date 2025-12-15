@@ -1,0 +1,61 @@
+{
+  "name": "deveyes",
+  "version": "1.0.0",
+  "description": "MCP server that gives AI coding assistants eyes to see visual output from local development environments",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "deveyes": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "npx fastmcp dev src/index.ts",
+    "build": "tsup",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "screenshot",
+    "visual-feedback",
+    "claude",
+    "cursor",
+    "cline",
+    "playwright",
+    "developer-tools"
+  ],
+  "author": "Gnana",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gnana997/deveyes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gnana997/deveyes/issues"
+  },
+  "homepage": "https://github.com/gnana997/deveyes#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "fastmcp": "^2.0.0",
+    "playwright": "^1.49.0",
+    "sharp": "^0.33.5",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "^0.17.5",
+    "@types/node": "^20.19.27",
+    "mcp-dev-kit": "^0.1.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
