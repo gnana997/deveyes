@@ -7,9 +7,13 @@
 import { FastMCP } from 'fastmcp';
 import { SERVER_CONFIG } from './config.js';
 import { screenshotTool } from './tools/screenshot.js';
-import { closeBrowser } from './lib/browser.js';
+import { closeBrowser, initializeBrowserConfig, getCurrentBrowserType } from './lib/browser.js';
 import { getAvailableViewports, VIEWPORT_PRESETS } from './lib/viewports.js';
 import { LLM_LIMITS } from './config.js';
+
+// Initialize browser configuration from CLI args / environment
+// Supports: --browser chromium|firefox|webkit or DEVEYES_BROWSER env var
+initializeBrowserConfig();
 
 // Create the MCP server
 const server = new FastMCP({
@@ -131,5 +135,6 @@ server.start({
 
 // Log startup to stderr (not stdout, to avoid breaking stdio protocol)
 console.error(`[DevEyes] MCP server started (v${SERVER_CONFIG.version})`);
+console.error(`[DevEyes] Browser: ${getCurrentBrowserType()} (use --browser firefox|webkit to change)`);
 console.error(`[DevEyes] Available tool: screenshot`);
 console.error(`[DevEyes] Available viewports: ${getAvailableViewports().join(', ')}`);

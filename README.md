@@ -10,6 +10,8 @@ DevEyes is a Model Context Protocol (MCP) server that captures screenshots from 
 - **Auto-Compression** - Automatically resizes and compresses images to stay within Claude's limits (8000px max, 1568px optimal)
 - **Viewport Presets** - Built-in presets for mobile, tablet, and desktop testing
 - **Console Capture** - Captures browser console errors, warnings, and network failures
+- **Multi-Browser Support** - Choose between Chromium (default), Firefox, or WebKit
+- **Auto Browser Install** - Automatically installs the required browser on first run
 - **Zero Configuration** - Works out of the box with sensible defaults
 
 ## Installation
@@ -24,12 +26,19 @@ Or run directly with npx:
 npx deveyes
 ```
 
-### Install Playwright Browsers
+### Browser Installation
 
-DevEyes uses Playwright for browser automation. Install the required browsers:
+DevEyes **automatically installs** the required browser on first run. No manual setup needed!
+
+If you prefer to pre-install or use a different browser:
 
 ```bash
+# Pre-install (optional)
 npx playwright install chromium
+
+# Or install Firefox/WebKit
+npx playwright install firefox
+npx playwright install webkit
 ```
 
 ## Configuration
@@ -78,6 +87,39 @@ Add to your Cline MCP configuration:
   }
 }
 ```
+
+### Using a Different Browser
+
+By default, DevEyes uses Chromium. To use Firefox or WebKit:
+
+**Via CLI argument:**
+```json
+{
+  "mcpServers": {
+    "deveyes": {
+      "command": "npx",
+      "args": ["deveyes", "--browser", "firefox"]
+    }
+  }
+}
+```
+
+**Via environment variable:**
+```json
+{
+  "mcpServers": {
+    "deveyes": {
+      "command": "npx",
+      "args": ["deveyes"],
+      "env": {
+        "DEVEYES_BROWSER": "webkit"
+      }
+    }
+  }
+}
+```
+
+Supported browsers: `chromium` (default), `firefox`, `webkit`
 
 ## Usage
 
@@ -227,10 +269,13 @@ This opens a browser UI at `http://localhost:6274` where you can:
 
 ### "Browser not found" error
 
-Install Playwright browsers:
+DevEyes automatically installs browsers, but if installation fails, manually install:
 
 ```bash
 npx playwright install chromium
+# or for other browsers:
+npx playwright install firefox
+npx playwright install webkit
 ```
 
 ### Screenshot times out
