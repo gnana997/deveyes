@@ -130,11 +130,36 @@ export async function closeBrowser(): Promise<void> {
 export type WaitStrategy = 'networkIdle' | 'domStable' | 'load' | 'none';
 
 /**
+ * Playwright StorageState for authentication
+ */
+export interface StorageState {
+  cookies: Array<{
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires: number;
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: 'Strict' | 'Lax' | 'None';
+  }>;
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{
+      name: string;
+      value: string;
+    }>;
+  }>;
+}
+
+/**
  * Options for creating a page
  */
 export interface CreatePageOptions {
   viewport?: string | ViewportConfig;
   userAgent?: string;
+  /** Playwright storageState for authenticated sessions */
+  storageState?: StorageState;
 }
 
 /**
@@ -147,7 +172,7 @@ export interface NavigateOptions {
 }
 
 /**
- * Create a new page with viewport settings
+ * Create a new page with viewport settings and optional authentication
  */
 export async function createPage(options: CreatePageOptions = {}): Promise<Page> {
   const browser = await getBrowser();
@@ -157,7 +182,7 @@ export async function createPage(options: CreatePageOptions = {}): Promise<Page>
     ? parseViewport(options.viewport)
     : options.viewport ?? parseViewport(DEFAULT_VIEWPORT);
 
-  // Create context with viewport settings
+  // Create context with viewport settings and optional storageState for auth
   const context = await browser.newContext({
     viewport: {
       width: viewportConfig.width,
@@ -167,6 +192,8 @@ export async function createPage(options: CreatePageOptions = {}): Promise<Page>
     isMobile: viewportConfig.isMobile,
     hasTouch: viewportConfig.hasTouch,
     userAgent: options.userAgent ?? viewportConfig.userAgent,
+    // Pass storageState if provided (for authenticated sessions)
+    storageState: options.storageState,
   });
 
   const page = await context.newPage();

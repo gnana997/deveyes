@@ -16,6 +16,8 @@ import { processImage, estimateTokenCost } from '../lib/image-processor.js';
 import { createConsoleCapture, ConsoleCaptureResult } from '../lib/console-capture.js';
 import { parseViewport, getAvailableViewports } from '../lib/viewports.js';
 import { saveScreenshot, getStorageConfig, SaveResult, setMcpRoots } from '../lib/screenshot-storage.js';
+import { loadAuthState, hasAuthState, getDomainKey } from '../lib/auth-storage.js';
+import type { StorageState } from '../lib/browser.js';
 
 /**
  * Screenshot tool input schema
@@ -92,6 +94,11 @@ export interface ScreenshotOutput {
   url: string;
   /** File save result (if save=true) */
   saved?: SaveResult;
+  /** Whether authentication was used */
+  authenticated?: {
+    domain: string;
+    used: boolean;
+  };
 }
 
 /**
@@ -108,8 +115,21 @@ export async function executeScreenshot(input: ScreenshotInput): Promise<Screens
   const viewportConfig = parseViewport(viewport);
   const viewportName = typeof viewport === 'string' ? viewport : 'custom';
 
-  // Create page with viewport
-  const page = await createPage({ viewport: viewportConfig });
+  // Check for saved authentication state for this URL's domain
+  let storageState: StorageState | undefined;
+  let authInfo: { domain: string; used: boolean } | undefined;
+  const domainKey = getDomainKey(url);
+
+  if (hasAuthState(url)) {
+    storageState = loadAuthState(url);
+    if (storageState) {
+      authInfo = { domain: domainKey, used: true };
+      console.error(`[DevEyes] Using saved auth for: ${domainKey}`);
+    }
+  }
+
+  // Create page with viewport and optional auth state
+  const page = await createPage({ viewport: viewportConfig, storageState });
 
   // Setup console capture
   const consoleCapture = createConsoleCapture();
@@ -166,6 +186,7 @@ export async function executeScreenshot(input: ScreenshotInput): Promise<Screens
       console: consoleCaptured,
       url,
       saved,
+      authenticated: authInfo,
     };
 
     return output;
@@ -189,6 +210,7 @@ export async function formatScreenshotResponse(output: ScreenshotOutput) {
     transforms: output.transforms,
     console: output.console,
     url: output.url,
+    authenticated: output.authenticated,
   };
 
   // Add file paths and hint if saved

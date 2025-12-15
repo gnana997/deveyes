@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-12-16
+
+### Added
+
+- **Authentication Support** - Screenshots of protected pages (dashboards, admin panels, etc.)
+  - New `deveyes login <url>` command - Opens headed browser for manual login, saves session cookies/localStorage
+  - New `deveyes logout <url>` command - Remove saved auth for a domain
+  - New `deveyes auth-list` command - List all saved authentication states
+  - Auto-detection: Screenshot tool automatically loads saved auth for matching domains
+  - Auth state stored per-domain in `.deveyes/auth/` directory (already gitignored)
+  - Session expiration warnings when auth is older than 24 hours
+
+- **CLI Help** - `deveyes --help` shows all available commands and options
+
+### How It Works
+
+1. Run `npx deveyes login http://localhost:3000`
+2. Browser opens, you log in manually
+3. Press Enter - auth saved to `.deveyes/auth/localhost-3000.json`
+4. All future screenshots for `localhost:3000/*` automatically use saved auth
+
+### Technical Details
+
+- Uses Playwright's `storageState` for cross-process session persistence
+- Auth files contain cookies and localStorage (portable JSON format)
+- Domain matching uses `hostname:port` (e.g., `localhost-3000`, `app.example.com`)
+- Response metadata includes `authenticated: { domain, used: true }` when auth is applied
+
+### Testing
+
+- Tested on Windows with Claude Code
+- Would appreciate feedback for testing on macOS and Ubuntu
+- Would appreciate feedback for testing with other AI-assisted coding tools (Cursor, Cline, Augment Code, Windsurf, etc.)
+
+Please report any issues or feedback at: https://github.com/gnana997/deveyes/issues
+
 ## [1.0.5] - 2025-12-15
 
 ### Added

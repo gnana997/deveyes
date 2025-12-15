@@ -7,6 +7,7 @@ DevEyes is a Model Context Protocol (MCP) server that captures screenshots from 
 ## Features
 
 - **Smart Screenshot Capture** - Capture screenshots from any localhost URL with automatic LLM optimization
+- **Authentication Support** - Login once, screenshot protected pages (dashboards, admin panels) automatically
 - **Full-Page Screenshots** - Capture entire scrollable pages with auto-scroll to trigger lazy-loaded content
 - **Auto-Compression** - Automatically resizes and compresses images to stay within Claude's limits (8000px max, 1568px optimal)
 - **Local Save Fallback** - Save screenshots locally for MCP clients that don't support embedded images (Augment, Cline)
@@ -183,6 +184,48 @@ DevEyes automatically detects where to save screenshots using this priority:
 3. **Home directory fallback** - If no project found, saves to `~/.deveyes/screenshots/`
 
 This ensures screenshots work reliably across all platforms (Windows, macOS, Linux) and MCP client configurations.
+
+### Authentication for Protected Pages
+
+DevEyes can capture screenshots of pages behind login (dashboards, admin panels, etc.) by saving your session.
+
+#### Step 1: Login and Save Session
+
+```bash
+npx deveyes login http://localhost:3000
+```
+
+This opens a headed browser. Log in to your app, then press Enter in the terminal. Your session (cookies + localStorage) is saved to `.deveyes/auth/localhost-3000.json`.
+
+#### Step 2: Screenshot Protected Pages
+
+Now all screenshots for that domain automatically use your saved session:
+
+```
+Take a screenshot of http://localhost:3000/dashboard
+```
+
+No more login pages in your screenshots!
+
+#### Managing Auth States
+
+```bash
+# List all saved auth states
+npx deveyes auth-list
+
+# Remove auth for a domain
+npx deveyes logout http://localhost:3000
+
+# See all commands
+npx deveyes --help
+```
+
+#### How It Works
+
+- Auth is saved per-domain (e.g., `localhost:3000`, `app.example.com`)
+- Session cookies may expire based on your app's settings - just re-run `login` when needed
+- Auth files are stored in `.deveyes/auth/` (already in `.gitignore`)
+- Response metadata shows `authenticated: { domain, used: true }` when auth was applied
 
 ## Usage
 
@@ -396,6 +439,19 @@ If sections appear blank in full-page screenshots, the page may have:
 - **Heavy lazy loading** - Try waiting longer with `waitFor: load`
 - **Scroll-triggered animations** - DevEyes auto-scrolls but some complex animations may need `waitForSelector`
 - **Dynamic content loading** - Use `waitForSelector` to wait for specific elements
+
+### Screenshot shows login page instead of dashboard
+
+Your session may have expired. Re-authenticate:
+
+```bash
+npx deveyes login http://localhost:3000
+```
+
+To check if auth exists for a domain:
+```bash
+npx deveyes auth-list
+```
 
 ### Screenshot save fails on macOS/Linux
 
