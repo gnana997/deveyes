@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * DevEyes MCP Server
  * Gives AI coding assistants "eyes" to see visual output from local development environments

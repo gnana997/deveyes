@@ -1,6 +1,6 @@
 {
   "name": "deveyes",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server that gives AI coding assistants eyes to see visual output from local development environments",
   "type": "module",
   "main": "dist/index.js",
@@ -45,7 +45,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "fastmcp": "^2.0.0",
+    "fastmcp": "^3.25.4",
     "playwright": "^1.49.0",
     "sharp": "^0.33.5",
     "zod": "^3.25.0"
